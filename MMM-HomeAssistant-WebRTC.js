@@ -4,6 +4,9 @@ Module.register('MMM-HomeAssistant-WebRTC', {
     stream: null,
     connectTimeout: null,
 
+    suspended: false,
+    suspendedForUserPresence: false,
+
     defaults: {
         host: 'hassio.local',
         port: '8123',
@@ -17,11 +20,23 @@ Module.register('MMM-HomeAssistant-WebRTC', {
         this._init();
     },
 
+    suspend: function () {
+        if (this.stream) {
+            this.video.pause();
+            this.suspended = true;
+        }
+    },
+
+    resume: function () {
+        if (this.stream) {
+            this.video.play();
+            this.suspended = false;
+        }
+    },
+
     getStyles() {
         return [this.name + '.css'];
     },
-
-    getHeader: () => '',
 
     getDom() {
         if (this.stream) {
@@ -39,7 +54,6 @@ Module.register('MMM-HomeAssistant-WebRTC', {
                 this.video.srcObject = this.stream;
                 this.video.play();
             };
-            this.video.onpause = recover;
             this.video.onstalled = recover;
             this.video.onerror = recover;
             return this.video;
@@ -49,6 +63,22 @@ Module.register('MMM-HomeAssistant-WebRTC', {
         error.classList.add('haws-error', 'small');
         error.innerHTML = 'No data from Home Assistant';
         return error;
+    },
+
+    notificationReceived: function(notification, payload, sender) {
+        // Handle USER_PRESENCE events from the MMM-PIR-sensor/similar modules
+        if (notification === "USER_PRESENCE") {
+            if (payload) {
+                this.suspendedForUserPresence = false;
+                if (this.suspended && this.visible) {
+                    this.resume();
+                }
+                return;
+            } else {
+                this.suspendedForUserPresence = true;
+                this.suspend();
+            }
+        }
     },
 
     sendOffer(sdp) {
